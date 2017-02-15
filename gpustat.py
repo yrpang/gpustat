@@ -165,9 +165,10 @@ class GPUStatCollection(object):
             if not line: continue
             query_results = line.split(',')
 
-            g = GPUStat({col_name: col_value.strip() for
-                         (col_name, col_value) in zip(gpu_query_columns, query_results)
-                         })
+            g = GPUStat(dict(
+                (col_name, col_value.strip()) for \
+                (col_name, col_value) in zip(gpu_query_columns, query_results)
+            ))
             gpu_list.append(g)
 
         return GPUStatCollection(gpu_list)
@@ -185,13 +186,16 @@ class GPUStatCollection(object):
         for line in smi_output.split('\n'):
             if not line: continue
             query_results = line.split(',')
-            process_entry = dict({col_name: col_value.strip() for
-                                  (col_name, col_value) in zip(gpu_query_columns, query_results)
-                                  })
+            process_entry = dict(
+                (col_name, col_value.strip()) for \
+                (col_name, col_value) in zip(gpu_query_columns, query_results)
+            )
             process_entries.append(process_entry)
 
-        pid_map = {int(e['pid']) : None for e in process_entries
-                   if not 'Not Supported' in e['pid']}
+        pid_map = dict(
+            (int(e['pid']), None) for e in process_entries \
+                if not 'Not Supported' in e['pid']
+        )
 
         # 2. map pid to username, etc.
         if pid_map:
