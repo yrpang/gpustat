@@ -33,7 +33,10 @@ def remove_ansi_codes(s):
 # -----------------------------------------------------------------------------
 
 
-def _configure_mock(N=pynvml, scenario_nonexistent_pid=False):
+def _configure_mock(N=pynvml,
+                    scenario_nonexistent_pid=False,
+                    scenario_gpuislost=False,
+                    ):
     """Define mock behaviour for pynvml and psutil.{Process,virtual_memory}."""
 
     # without following patch, unhashable NVMLError makes unit test crash
@@ -56,10 +59,15 @@ def _configure_mock(N=pynvml, scenario_nonexistent_pid=False):
             return v
         return _callable
 
+    when(N).nvmlDeviceGetHandleByIndex(0).thenReturn(mock_handles[0])
+    when(N).nvmlDeviceGetHandleByIndex(1).thenReturn(mock_handles[1])
+    if not scenario_gpuislost:
+        when(N).nvmlDeviceGetHandleByIndex(2).thenReturn(mock_handles[2])
+    else:
+        when(N).nvmlDeviceGetHandleByIndex(2).thenRaise(N.NVMLError_GpuIsLost)
+
     for i in range(NUM_GPUS):
         handle = mock_handles[i]
-        when(N).nvmlDeviceGetHandleByIndex(i)\
-            .thenReturn(handle)
         when(N).nvmlDeviceGetIndex(handle)\
             .thenReturn(i)
         when(N).nvmlDeviceGetName(handle)\
@@ -194,6 +202,10 @@ def scenario_basic():
 def scenario_nonexistent_pid():
     _configure_mock(scenario_nonexistent_pid=True)
 
+@pytest.fixture
+def scenario_gpuislost():
+    _configure_mock(scenario_gpuislost=True)
+
 
 class TestGPUStat(object):
     """A pytest class suite for gpustat."""
@@ -261,6 +273,17 @@ class TestGPUStat(object):
         assert '[2] GeForce GTX TITAN 2' in line, str(line)
         assert '99999' not in line
         assert '(Not Supported)' not in line
+
+    def test_new_query_mocked_gpuislost(self, scenario_gpuislost):
+        """
+        Test a case where GPU 2 is lost.
+        """
+        r = self.capture_output('gpustat')
+        print(r)
+
+        assert 'GTX TITAN 0' in r.split('\n')[1]
+        assert '((GPU is Lost))' in r.split('\n')[3]
+
 
     def test_attributes_and_items(self, scenario_basic):
         """Test whether each property of `GPUStat` instance is well-defined."""

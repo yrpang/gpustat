@@ -205,7 +205,8 @@ class GPUStat(object):
         colors['C0'] = term.normal
         colors['C1'] = term.cyan
         colors['CBold'] = term.bold
-        colors['CName'] = term.blue
+        colors['CName'] = _conditional(lambda: type(self) != LostGPU,
+                                       term.blue, term.red)
         colors['CTemp'] = _conditional(lambda: self.temperature < 50,
                                        term.red, term.bold_red)
         colors['FSpeed'] = _conditional(lambda: self.fan_speed < 30,
@@ -273,7 +274,10 @@ class GPUStat(object):
         reps += " | %(C1)s%(CMemU)s{entry[memory.used]:>5}%(C0)s " \
             "/ %(CMemT)s{entry[memory.total]:>5}%(C0)s MB"
         reps = (reps) % colors
-        reps = reps.format(entry={k: _repr(v) for k, v in self.entry.items()},
+
+        entry = {k: _repr(v) for k, v in self.entry.items()} \
+            if isinstance(self.entry, dict) else self.entry
+        reps = reps.format(entry=entry,
                            gpuname_width=gpuname_width)
         reps += " |"
 
@@ -335,6 +339,27 @@ class GPUStat(object):
             o['processes'] = [{k: v for (k, v) in p.items() if k != 'gpu_uuid'}
                               for p in self.entry['processes']]
         return o
+
+
+class LostGPU(GPUStat):
+
+    def __init__(self, gpu_index, ex):
+        super().__init__(dict(
+            index=gpu_index,
+            name='((GPU is Lost))',
+            processes=None
+        ))
+        self.entry = self.NullEntry(self.entry)
+        self._gpu_index = gpu_index
+        self._ex = ex
+
+    class NullEntry:
+        def __init__(self, entry):
+            self._entry = entry
+        def __getitem__(self, key):
+            return self._entry.get(key, '?')
+        def copy(self):
+            return self._entry.copy()
 
 
 class GPUStatCollection(object):
@@ -505,9 +530,12 @@ class GPUStatCollection(object):
         device_count = N.nvmlDeviceGetCount()
 
         for index in range(device_count):
-            handle = N.nvmlDeviceGetHandleByIndex(index)
-            gpu_info = get_gpu_info(handle)
-            gpu_stat = GPUStat(gpu_info)
+            try:
+                handle = N.nvmlDeviceGetHandleByIndex(index)
+                gpu_info = get_gpu_info(handle)
+                gpu_stat = GPUStat(gpu_info)
+            except N.NVMLError_GpuIsLost as ex:
+                gpu_stat = LostGPU(index, ex)
             gpu_list.append(gpu_stat)
 
         # 2. additional info (driver version, etc).
