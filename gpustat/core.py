@@ -370,6 +370,14 @@ class GPUStatCollection(object):
         def get_gpu_info(handle):
             """Get one GPU information specified by nvml handle"""
 
+            try:
+                process_percent = N.nvmlDeviceGetProcessUtilization(
+                    handle, int(time.time())
+                )
+            except N.NVMLError as e:
+                log.add_exception("process_percent", e)
+                process_percent = None  # Not supported
+
             def get_process_info(nv_process):
                 """Get the process information of specific pid"""
                 process = {}
